@@ -1,2 +1,3 @@
 ddpg_per_env/
 __pycache__/
+logs/

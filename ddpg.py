@@ -1,12 +1,18 @@
-import buffer
+from buffer import Buffer, PrioritizedReplayBuffer
+from agent import Agent
+from dataset import RLDataset
+
+from typing import Tuple, OrderedDict, List
 
 import gym
 import numpy as np
 import pandas as pd
 import torch
 from IPython.display import display
+
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers import CSVLogger
+
 from torch import Tensor, nn
 import torch.nn.functional as F
 from torch.optim import Adam, Optimizer
@@ -83,6 +89,8 @@ class DDPG(LightningModule):
         critic_lr: float = 5e-4,
         env: str = "Pendulum-v1",
         gamma: float = 0.99,
+        sync_rate: int = 10,
+        episode_length: int = 200,
         tau: float = 5e-3,
         train_episodes: float = 300,
         use_prioritized_buffer: bool = 0,
@@ -111,8 +119,9 @@ class DDPG(LightningModule):
         n_actions = self.env.action_space.shape[0]
         action_upper_bound = self.env.action_space.high[0]
 
-        """ Buffer parameters """
-        self.use_prioritized_buffer = self.hparams.use_prioritized_buffer
+        # """ Buffer parameters """
+        # self.use_prioritized_buffer = self.hparams.use_prioritized_buffer
+        # self.batch_size = self.hparams.batch_size
 
         """ 
         Initialize actor, critic, target actor and target critic. Targets are 
@@ -138,12 +147,122 @@ class DDPG(LightningModule):
         be used, otherwise the prioritized experience replay buffer.
         """
         self.buffer = (
-            buffer.PrioritizedReplayBuffer
-            if self.hparams.use_prioritized_buffer
-            else buffer.Buffer
+            PrioritizedReplayBuffer if self.hparams.use_prioritized_buffer else Buffer
         )
 
+        """
+        Initialize Agent to play the game
+        """
+        self.agent = Agent(env=self.env, buffer=self.buffer)
+        self.total_reward = 0
+        self.episode_reward = 0
 
-if __name__ == "__main__":
-    foo = DDPG(use_prioritized_buffer=1)
-    print(foo.buffer)
+    def forward(self, x: Tensor) -> Tensor:
+        """Passes in a state x through the network and gets the q_values of each
+        action as an output.
+
+        Args:
+            x: environment state
+        """
+        out = self.net(x)
+        return out
+
+    def ddpg_loss(self, batch: Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tensor]:
+        """
+        Calculates the mse loss using a mini batch from the replay buffer. See
+        pseudo-code formulas.
+
+        Args:
+            batch: current mini batch of replay data
+        """
+        state_batch, action_batch, reward_batch, dones, next_state_batch = batch
+
+        target_actions = self.target_actor(next_state_batch)
+        y = reward_batch + self.gamma * self.target_critic(
+            [next_state_batch, target_actions]
+        )
+        critic_value = self.critic([state_batch, action_batch])
+        critic_loss = nn.MSELoss()(y, critic_value)
+
+        actions = self.actor(state_batch)
+        critic_value = self.critic([state_batch, actions])
+        actor_loss = -torch.mean(critic_value)
+
+        return critic_loss, actor_loss
+
+    def training_step(
+        self, batch: Tuple[Tensor, Tensor], nb_batch
+    ) -> Tuple[OrderedDict, OrderedDict]:
+        """
+        Carries out a single step through the environment to update the replay buffer.
+        Then calculates loss based on the minibatch recieved.
+
+        Args:
+            batch : current mini batch of replay data
+            nb_batch : batch number
+        """
+        device = self.get_device(batch)
+        # epsilon = self.get_epsilon(
+        #     self.hparams.eps_start, self.hparams.eps_end, self.hparams.eps_last_frame
+        # )
+        # self.log("epsilon", epsilon)
+
+        # step through environment with agent
+        # reward, done = self.agent.play_step(self.net, epsilon, device)
+        reward, done = self.agent.play_step(self.net, device)
+        self.episode_reward += reward
+        self.log("episode reward", self.episode_reward)
+
+        batch_indices = np.random.choice(len(self.buffer), self.batch_size)
+        batch = self.buffer[batch_indices]
+
+        # calculates training loss
+        critic_loss, actor_loss = self.ddpg_loss(batch)
+
+        if done:
+            self.total_reward = self.episode_reward
+            self.episode_reward = 0
+
+        # FIXME Not sure what this is for, investigate. Soft update of target network
+        # if self.global_step % self.hparams.sync_rate == 0:
+        #     self.target_net.load_state_dict(self.net.state_dict())
+
+        self.log_dict(
+            {
+                "reward": reward,
+                "train_critic_loss": critic_loss,
+                "train_actor_loss": actor_loss,
+            }
+        )
+        self.log("total_reward", self.total_reward, prog_bar=True)
+        self.log("steps", self.global_step, logger=False, prog_bar=True)
+
+        return critic_loss, actor_loss
+
+    def configure_optimizers(self) -> List[Optimizer]:
+        """Initialize Adam optimizer."""
+        critic_optimizer = torch.optim.Adam(
+            self.critic.parameters(), lr=self.hparams.critic_lr
+        )
+        actor_optimizer = torch.optim.Adam(
+            self.actor.parameters(), lr=self.hparams.actor_lr
+        )
+        # optimizer = Adam(self.net.parameters(), lr=self.hparams.lr)
+        return critic_optimizer, actor_optimizer
+
+    def __dataloader(self) -> DataLoader:
+        """Initialize the Replay Buffer dataset used for retrieving experiences."""
+        dataset = RLDataset(self.buffer, self.hparams.episode_length)
+        dataloader = DataLoader(
+            dataset=dataset,
+            batch_size=self.hparams.batch_size,
+        )
+        return dataloader
+
+    def train_dataloader(self) -> DataLoader:
+        """Get train loader."""
+        return self.__dataloader()
+
+    def get_device(self, batch) -> str:
+        """Retrieve device currently being used by minibatch."""
+        return batch[0].device.index if self.on_gpu else "cpu"
