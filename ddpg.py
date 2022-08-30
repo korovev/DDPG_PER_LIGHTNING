@@ -1,3 +1,5 @@
+import buffer
+
 import gym
 import numpy as np
 import pandas as pd
@@ -12,7 +14,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import IterableDataset
 
 
-class DDPG_Actor(nn.Module):
+class DDPGActor(nn.Module):
     """Actor Model of DDPG"""
 
     def __init__(self, state_dim: int, action_dim: int, action_max: float):
@@ -25,7 +27,7 @@ class DDPG_Actor(nn.Module):
             -   action_max : upper limit of the actions values according to specific
                 environment
         """
-        super(DDPG_Actor, self).__init__()
+        super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, 256),
             nn.ReLU(),
@@ -47,7 +49,7 @@ class DDPG_Actor(nn.Module):
         return self.net(state.float()) * action_max
 
 
-class DDPG_Critic(nn.Module):
+class DDPGCritic(nn.Module):
     """Critic Model of DDPG"""
 
     def __init__(self, state_dim: int, action_dim: int):
@@ -58,7 +60,7 @@ class DDPG_Critic(nn.Module):
             -   action_dim : dimensions of the action space according to specific
                 environment;
         """
-        super(DDPG_Critic, self).__init__()
+        super(DDPGCritic, self).__init__()
         self.l1 = nn.Linear(state_dim, 400)
         self.l2 = nn.Linear(400 + action_dim, 300)
         self.l3 = nn.Linear(300, action_dim)
@@ -117,21 +119,31 @@ class DDPG(LightningModule):
         assigned the same weights of the original networks. 
         """
         # Actor
-        self.actor = DDPG_Actor(
+        self.actor = DDPGActor(
             state_dim=obs_size, action_dim=n_actions, action_max=action_upper_bound
         )
         # Critic
-        self.critic = DDPG_Critic(state_dim=obs_size, action_dim=n_actions)
+        self.critic = DDPGCritic(state_dim=obs_size, action_dim=n_actions)
         # Target actor and weights equalization
-        self.target_actor = DDPG_Actor(
+        self.target_actor = DDPGActor(
             state_dim=obs_size, action_dim=n_actions, action_max=action_upper_bound
         )
         self.target_actor.load_state_dict(self.actor.state_dict())
         # Target critic and weights equalization
-        self.target_critic = DDPG_Critic(state_dim=obs_size, action_dim=n_actions)
+        self.target_critic = DDPGCritic(state_dim=obs_size, action_dim=n_actions)
         self.target_critic.load_state_dict(self.critic.state_dict())
+
+        """
+        Initialize buffer. If use_prioritized_buffer = 0 the normal buffer will 
+        be used, otherwise the prioritized experience replay buffer.
+        """
+        self.buffer = (
+            buffer.PrioritizedReplayBuffer
+            if self.hparams.use_prioritized_buffer
+            else buffer.Buffer
+        )
 
 
 if __name__ == "__main__":
-    foo = DDPG()
-    print(foo.actor.net[0].weight == foo.target_actor.net[0].weight)
+    foo = DDPG(use_prioritized_buffer=1)
+    print(foo.buffer)
