@@ -14,7 +14,7 @@ import random
 class Buffer(object):
     """Base Replay Buffer Object"""
 
-    def __init__(self, size: int) -> None:
+    def __init__(self, size: int = 100000) -> None:
         """
         Create Replay buffer.
         Parameters
@@ -31,6 +31,9 @@ class Buffer(object):
         Returns number of elements in the buffer.
         """
         return len(self._storage)
+
+    def __getitem__(self, keys: List[int]) -> List[Experience]:
+        return [self._storage[key] for key in keys]
 
     def add(self, experience: Experience) -> None:
         """
@@ -55,7 +58,8 @@ class Buffer(object):
         -   batch_size : How many transitions to sample.
         """
         idxes = [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
-        sampled_experiences = self._storage[idxes]
+        # sampled_experiences = self._storage[idxes]
+        sampled_experiences = [self._storage[idx] for idx in idxes]
 
         return sampled_experiences
 
@@ -63,7 +67,7 @@ class Buffer(object):
 class PrioritizedReplayBuffer(Buffer):
     """PER Buffer for Prioritized Experience Replay"""
 
-    def __init__(self, size: int, alpha: float) -> None:
+    def __init__(self, size: int = 100000, alpha: float = 0) -> None:
         """
         Create Prioritized Replay buffer.
         Parameters
@@ -130,7 +134,9 @@ class PrioritizedReplayBuffer(Buffer):
             weights.append(weight / max_weight)
         weights = np.array(weights)
 
-        sampled_experiences = self._storage[idxes]
+        # sampled_experiences = self._storage[idxes]
+        sampled_experiences = [self._storage[idx] for idx in idxes]
+
         return sampled_experiences
 
     def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:

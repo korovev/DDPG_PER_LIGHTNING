@@ -1,4 +1,5 @@
-from buffer import Buffer
+from buffers import Buffer
+from buffer_utils import Experience, Experience_weight_idx
 
 from typing import Iterator, Tuple
 
@@ -19,8 +20,17 @@ class RLDataset(IterableDataset):
         self.sample_size = sample_size
 
     def __iter__(self) -> Iterator[Tuple]:
-        states, actions, rewards, dones, new_states = self.buffer.sample(
-            self.sample_size
-        )
+        # states, actions, rewards, dones, new_states = self.buffer.sample(
+        #     self.sample_size
+        # )
+        sampled_exps = self.buffer.sample(self.sample_size)
+        states, actions, rewards, dones, new_states = ([] for i in range(5))
+        for exp in sampled_exps:
+            states.append(exp.state)
+            actions.append(exp.action)
+            rewards.append(exp.reward)
+            dones.append(exp.done)
+            new_states.append(exp.new_state)
+
         for i in range(len(dones)):
             yield states[i], actions[i], rewards[i], dones[i], new_states[i]

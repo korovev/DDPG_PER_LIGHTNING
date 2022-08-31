@@ -1,4 +1,5 @@
-from buffer import Buffer, PrioritizedReplayBuffer
+from buffer_utils import Experience, Experience_weight_idx
+from buffers import Buffer, PrioritizedReplayBuffer
 from agent import Agent
 from dataset import RLDataset
 
@@ -10,17 +11,17 @@ import pandas as pd
 import torch
 from IPython.display import display
 
-from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning import LightningModule
 
 from torch import Tensor, nn
 import torch.nn.functional as F
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
-from torch.utils.data.dataset import IterableDataset
+
+torch.autograd.set_detect_anomaly(True)
 
 
-class DDPGActor(nn.Module):
+class DDPGActor(LightningModule):
     """Actor Model of DDPG"""
 
     def __init__(self, state_dim: int, action_dim: int, action_max: float):
@@ -42,6 +43,7 @@ class DDPGActor(nn.Module):
             nn.Linear(256, action_dim),
             nn.Tanh(),
         )
+
         # TODO check if weights are actually initialized well like this
         self.apply(self._init_weights)
 
@@ -51,11 +53,11 @@ class DDPGActor(nn.Module):
             if module.bias is not None:
                 module.bias.data.zero_()
 
-    def forward(self, state, action_max: float):
-        return self.net(state.float()) * action_max
+    def forward(self, state: Tensor, action_max: float):
+        return self.net(state) * action_max
 
 
-class DDPGCritic(nn.Module):
+class DDPGCritic(LightningModule):
     """Critic Model of DDPG"""
 
     def __init__(self, state_dim: int, action_dim: int):
@@ -71,7 +73,7 @@ class DDPGCritic(nn.Module):
         self.l2 = nn.Linear(400 + action_dim, 300)
         self.l3 = nn.Linear(300, action_dim)
 
-    def forward(self, state, action):
+    def forward(self, state: Tensor, action):
         x = F.relu(self.l1(state))
         x = torch.cat([x, action], 1)
         x = F.relu(self.l2(x))
@@ -94,6 +96,7 @@ class DDPG(LightningModule):
         tau: float = 5e-3,
         train_episodes: float = 300,
         use_prioritized_buffer: bool = 0,
+        warm_start_steps: int = 1000,
     ) -> None:
         """
         Args:
@@ -107,8 +110,6 @@ class DDPG(LightningModule):
             -   train_episodes : on how many game episode training the model;
             -   use_prioritized_buffer : whether to use the Prioritized Experience
                 Buffer or just a normal one;
-
-
         """
         super(DDPG, self).__init__()
         self.save_hyperparameters()
@@ -117,7 +118,7 @@ class DDPG(LightningModule):
         self.env = gym.make(self.hparams.env)
         obs_size = self.env.observation_space.shape[0]
         n_actions = self.env.action_space.shape[0]
-        action_upper_bound = self.env.action_space.high[0]
+        self.action_upper_bound = self.env.action_space.high[0]
 
         # """ Buffer parameters """
         # self.use_prioritized_buffer = self.hparams.use_prioritized_buffer
@@ -129,13 +130,13 @@ class DDPG(LightningModule):
         """
         # Actor
         self.actor = DDPGActor(
-            state_dim=obs_size, action_dim=n_actions, action_max=action_upper_bound
+            state_dim=obs_size, action_dim=n_actions, action_max=self.action_upper_bound
         )
         # Critic
         self.critic = DDPGCritic(state_dim=obs_size, action_dim=n_actions)
         # Target actor and weights equalization
         self.target_actor = DDPGActor(
-            state_dim=obs_size, action_dim=n_actions, action_max=action_upper_bound
+            state_dim=obs_size, action_dim=n_actions, action_max=self.action_upper_bound
         )
         self.target_actor.load_state_dict(self.actor.state_dict())
         # Target critic and weights equalization
@@ -147,7 +148,9 @@ class DDPG(LightningModule):
         be used, otherwise the prioritized experience replay buffer.
         """
         self.buffer = (
-            PrioritizedReplayBuffer if self.hparams.use_prioritized_buffer else Buffer
+            PrioritizedReplayBuffer()
+            if self.hparams.use_prioritized_buffer
+            else Buffer()
         )
 
         """
@@ -157,6 +160,18 @@ class DDPG(LightningModule):
         self.total_reward = 0
         self.episode_reward = 0
 
+        # self.populate(self.hparams.warm_start_steps)
+
+    def populate(self, steps: int = 1000) -> None:
+        """Carries out several random steps through the environment to initially
+        fill up the replay buffer with experiences.
+
+        Args:
+            steps : number of random steps to populate the buffer with
+        """
+        for _ in range(steps):
+            self.agent.play_step(self.actor)
+
     def forward(self, x: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the q_values of each
         action as an output.
@@ -164,10 +179,25 @@ class DDPG(LightningModule):
         Args:
             x: environment state
         """
-        out = self.net(x)
+        out = self.actor(x)
+        # out = self.actor(x.clone().detach().to(self.device))
         return out
 
-    def ddpg_loss(self, batch: Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tensor]:
+    def _tensorify_gpufy(self, tensor_batch: List[Tensor]) -> Tensor:
+        tensorified_list = tensor_batch[0].unsqueeze(dim=0)
+        for i in range(1, len(tensor_batch)):
+            tensorified_list = torch.cat(
+                (
+                    tensorified_list,
+                    tensor_batch[i].unsqueeze(dim=0),
+                ),
+                0,
+            )
+        return tensorified_list
+
+    def ddpg_loss(
+        self, batch: List[Experience], module: "str"
+    ) -> Tuple[Tensor, Tensor]:
         """
         Calculates the mse loss using a mini batch from the replay buffer. See
         pseudo-code formulas.
@@ -175,23 +205,61 @@ class DDPG(LightningModule):
         Args:
             batch: current mini batch of replay data
         """
-        state_batch, action_batch, reward_batch, dones, next_state_batch = batch
+        if module == "critic":
+            state_batch, action_batch, reward_batch, dones, next_state_batch = (
+                [] for i in range(5)
+            )
+            for exp in batch:
+                state_batch.append(exp.state.float())
+                action_batch.append(exp.action.float())
+                reward_batch.append(float(exp.reward))
+                dones.append(exp.done)
+                next_state_batch.append(exp.new_state.float())
 
-        target_actions = self.target_actor(next_state_batch)
-        y = reward_batch + self.gamma * self.target_critic(
-            [next_state_batch, target_actions]
-        )
-        critic_value = self.critic([state_batch, action_batch])
-        critic_loss = nn.MSELoss()(y, critic_value)
+            next_state_batch_tensor = self._tensorify_gpufy(next_state_batch)
+            state_batch_tensor = self._tensorify_gpufy(state_batch)
+            action_batch_tensor = self._tensorify_gpufy(action_batch)
 
-        actions = self.actor(state_batch)
-        critic_value = self.critic([state_batch, actions])
-        actor_loss = -torch.mean(critic_value)
+            target_actions = self.target_actor(
+                next_state_batch_tensor, self.action_upper_bound
+            )
 
-        return critic_loss, actor_loss
+            reward_batch = torch.tensor(reward_batch, device=self.device)
+            y = reward_batch + self.hparams.gamma * self.target_critic(
+                next_state_batch_tensor, target_actions
+            )
+
+            critic_value = self.critic(state_batch_tensor, action_batch_tensor)
+            critic_loss = nn.MSELoss()(y, critic_value)
+
+            return critic_loss
+
+        elif module == "actor":
+            state_batch, action_batch, reward_batch, dones, next_state_batch = (
+                [] for i in range(5)
+            )
+            for exp in batch:
+                state_batch.append(exp.state)
+                action_batch.append(exp.action)
+                reward_batch.append(float(exp.reward))
+                dones.append(exp.done)
+                next_state_batch.append(exp.new_state)
+
+            state_batch_tensor = self._tensorify_gpufy(state_batch)
+
+            actions = self.actor(state_batch_tensor, self.action_upper_bound)
+            critic_value = self.critic(state_batch_tensor, actions)
+            actor_loss = -torch.mean(critic_value)
+
+            return actor_loss
+        else:
+            raise ValueError("The 'module' argument can only be 'critic' or 'actor'")
 
     def training_step(
-        self, batch: Tuple[Tensor, Tensor], nb_batch
+        self,
+        batch: Tuple[Tensor, Tensor],
+        nb_batch,
+        optimizer_idx,
     ) -> Tuple[OrderedDict, OrderedDict]:
         """
         Carries out a single step through the environment to update the replay buffer.
@@ -201,43 +269,72 @@ class DDPG(LightningModule):
             batch : current mini batch of replay data
             nb_batch : batch number
         """
-        device = self.get_device(batch)
-        # epsilon = self.get_epsilon(
-        #     self.hparams.eps_start, self.hparams.eps_end, self.hparams.eps_last_frame
-        # )
-        # self.log("epsilon", epsilon)
+        # Actor optimizer idx
+        if optimizer_idx == 0:
+            # step through environment with agent
+            reward, done = self.agent.play_step(self.actor)
+            self.episode_reward += reward
+            self.log("episode reward", self.episode_reward)
 
-        # step through environment with agent
-        # reward, done = self.agent.play_step(self.net, epsilon, device)
-        reward, done = self.agent.play_step(self.net, device)
-        self.episode_reward += reward
-        self.log("episode reward", self.episode_reward)
+            # FIXME check if random choice is ok even for PER
+            batch_indices = np.random.choice(len(self.buffer), self.hparams.batch_size)
+            batch = self.buffer[batch_indices]
 
-        batch_indices = np.random.choice(len(self.buffer), self.batch_size)
-        batch = self.buffer[batch_indices]
+            # calculates training loss
+            actor_loss = self.ddpg_loss(batch, "actor")
 
-        # calculates training loss
-        critic_loss, actor_loss = self.ddpg_loss(batch)
+            if done:
+                self.total_reward = self.episode_reward
+                self.episode_reward = 0
 
-        if done:
-            self.total_reward = self.episode_reward
-            self.episode_reward = 0
+            # FIXME Not sure what this is for, investigate. Soft update of target network
+            if self.global_step % self.hparams.sync_rate == 0:
+                self.target_actor.load_state_dict(self.actor.state_dict())
 
-        # FIXME Not sure what this is for, investigate. Soft update of target network
-        # if self.global_step % self.hparams.sync_rate == 0:
-        #     self.target_net.load_state_dict(self.net.state_dict())
+            self.log_dict(
+                {
+                    "reward": reward,
+                    "train_actor_loss": actor_loss,
+                }
+            )
+            self.log("total_reward", self.total_reward, prog_bar=True)
+            self.log("steps", self.global_step, logger=False, prog_bar=True)
 
-        self.log_dict(
-            {
-                "reward": reward,
-                "train_critic_loss": critic_loss,
-                "train_actor_loss": actor_loss,
-            }
-        )
-        self.log("total_reward", self.total_reward, prog_bar=True)
-        self.log("steps", self.global_step, logger=False, prog_bar=True)
+            return actor_loss
+        # Critic optimizer idx
+        elif optimizer_idx == 1:
+            # step through environment with agent
+            reward, done = self.agent.play_step(self.actor)
 
-        return critic_loss, actor_loss
+            self.episode_reward += reward
+            self.log("episode reward", self.episode_reward)
+
+            # FIXME check if random choice is ok even for PER
+            batch_indices = np.random.choice(len(self.buffer), self.hparams.batch_size)
+            batch = self.buffer[batch_indices]
+
+            # calculates training loss
+            critic_loss = self.ddpg_loss(batch, "critic")
+
+            if done:
+                self.total_reward = self.episode_reward
+                self.episode_reward = 0
+
+            # FIXME Not sure what this is for, investigate. Soft update of target network
+            if self.global_step % self.hparams.sync_rate == 0:
+                self.target_critic.load_state_dict(self.critic.state_dict())
+
+            self.log_dict(
+                {
+                    "reward": reward,
+                    "train_critic_loss": critic_loss,
+                }
+            )
+
+            return critic_loss
+
+        else:
+            raise ValueError("Optimizers_idx can only be 0 or 1")
 
     def configure_optimizers(self) -> List[Optimizer]:
         """Initialize Adam optimizer."""
@@ -247,8 +344,8 @@ class DDPG(LightningModule):
         actor_optimizer = torch.optim.Adam(
             self.actor.parameters(), lr=self.hparams.actor_lr
         )
-        # optimizer = Adam(self.net.parameters(), lr=self.hparams.lr)
-        return critic_optimizer, actor_optimizer
+
+        return [actor_optimizer, critic_optimizer]
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
