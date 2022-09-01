@@ -58,11 +58,7 @@ class Buffer(object):
         ----------
         -   batch_size : How many transitions to sample.
         """
-        # idxes = [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
         idxes = np.random.choice(len(self), batch_size)
-        print(idxes)
-        exit()
-        # sampled_experiences = self._storage[idxes]
         sampled_experiences = [self._storage[idx] for idx in idxes]
 
         return sampled_experiences

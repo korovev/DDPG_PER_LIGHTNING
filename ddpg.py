@@ -1,5 +1,6 @@
 from buffer_utils import Experience, Experience_weight_idx
-
+from buffers import Buffer, PrioritizedReplayBuffer
+from agent import Agent
 from dataset import RLDataset
 
 from typing import Tuple, OrderedDict, List
@@ -90,7 +91,7 @@ class DDPGCritic(LightningModule):
 
     def forward(self, state: Tensor, action):
         x = F.relu(self.l1(state))
-        x = torch.cat([x, action], 1)
+        x = torch.cat([x, action], -1)
         x = F.relu(self.l2(x))
         x = self.l3(x)
         return x
@@ -166,18 +167,20 @@ class DDPG(LightningModule):
         Initialize buffer. If use_prioritized_buffer = 0 the normal buffer will 
         be used, otherwise the prioritized experience replay buffer.
         """
-        # self.buffer = (
-        #     PrioritizedReplayBuffer()
-        #     if self.hparams.use_prioritized_buffer
-        #     else Buffer()
-        # ) #! Initialized in dataset.py in dataset
+        self.buffer = (
+            PrioritizedReplayBuffer()
+            if self.hparams.use_prioritized_buffer
+            else Buffer()
+        )
 
         """
         Initialize Agent to play the game
         """
         # self.agent = Agent(env=self.env, buffer=self.buffer)
         # self.total_reward = 0
-        # self.episode_reward = 0 #! Initialized in dataset.py in dataset
+        # self.episode_reward = 0  #! Initialized in dataset.py in dataset
+
+        # self.populate(self.hparams.warm_start_steps)
 
     def populate(self, steps: int = 1000) -> None:
         """Carries out several random steps through the environment to initially
@@ -187,8 +190,9 @@ class DDPG(LightningModule):
         Args:
             steps : number of random steps to populate the buffer with
         """
+        dummy_agent = Agent(self.env)
         for _ in range(steps):
-            self.agent.play_step(self.actor)
+            dummy_agent.play_step(self.actor)
 
     def forward(self, x: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the q_values of each
@@ -312,25 +316,9 @@ class DDPG(LightningModule):
         """
         # Actor optimizer idx
         if optimizer_idx == 0:
-            # step through environment with agent
-            reward, done = self.agent.play_step(self.actor)
-            self.episode_reward += reward
-            self.log("episode reward", self.episode_reward)
-
-            # FIXME check if random choice is ok even for PER
-            # batch_indices = np.random.choice(len(self.buffer), self.hparams.batch_size)
-            batch = self.buffer.sample(self.hparams.batch_size)
-            print(batch_indices)
-            exit()
-            # FIXME I should use the sample method of the buffer instead of doing this
-            batch = self.buffer[batch_indices]
 
             # calculates training loss
             actor_loss = self.ddpg_loss(batch, "actor")
-
-            if done:
-                self.total_reward = self.episode_reward
-                self.episode_reward = 0
 
             # Soft update
             if self.global_step % self.hparams.sync_rate == 0:
@@ -338,32 +326,18 @@ class DDPG(LightningModule):
 
             self.log_dict(
                 {
-                    "reward": reward,
                     "train_actor_loss": actor_loss,
                 }
             )
-            self.log("total_reward", self.total_reward, prog_bar=True)
             self.log("steps", self.global_step, logger=False, prog_bar=True)
 
             return actor_loss
+
         # Critic optimizer idx
         elif optimizer_idx == 1:
-            # step through environment with agent
-            reward, done = self.agent.play_step(self.actor)
-
-            self.episode_reward += reward
-            self.log("episode reward", self.episode_reward)
-
-            # FIXME check if random choice is ok even for PER
-            batch_indices = np.random.choice(len(self.buffer), self.hparams.batch_size)
-            batch = self.buffer[batch_indices]
 
             # calculates training loss
             critic_loss = self.ddpg_loss(batch, "critic")
-
-            if done:
-                self.total_reward = self.episode_reward
-                self.episode_reward = 0
 
             # FIXME Soft update
             if self.global_step % self.hparams.sync_rate == 0:
@@ -371,7 +345,6 @@ class DDPG(LightningModule):
 
             self.log_dict(
                 {
-                    "reward": reward,
                     "train_critic_loss": critic_loss,
                 }
             )
@@ -394,7 +367,9 @@ class DDPG(LightningModule):
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
-        dataset = RLDataset(self.hparams.batch_size)
+        dataset = RLDataset(
+            self.buffer, self.hparams.batch_size, self.env, self.actor, TRAIN_EPISODES
+        )
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,

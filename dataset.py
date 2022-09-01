@@ -6,6 +6,9 @@ from typing import Iterator, Tuple
 
 from torch.utils.data.dataset import IterableDataset
 
+import gym
+from pytorch_lightning import LightningModule
+
 
 class RLDataset(IterableDataset):
     """Iterable Dataset containing the ExperienceBuffer which will be updated
@@ -16,44 +19,55 @@ class RLDataset(IterableDataset):
         batch_size: number of experiences to sample at a time
     """
 
-    def __init__(self, batch_size: int) -> None:
+    def __init__(
+        self,
+        buffer: Buffer,
+        batch_size: int,
+        env: gym.Env,
+        actor_net: LightningModule,
+        train_episodes: int,
+    ) -> None:
         """
         Initialize buffer. If use_prioritized_buffer = 0 the normal buffer will
         be used, otherwise the prioritized experience replay buffer.
         """
-        self.buffer = (
-            PrioritizedReplayBuffer()
-            if self.hparams.use_prioritized_buffer
-            else Buffer()
-        )
+        super(RLDataset).__init__()
+        self.buffer = buffer
+        self.batch_size = batch_size
 
-        """
-        Initialize Agent to play the game
-        """
-        self.agent = Agent(env=self.env, buffer=self.buffer)
+        self.agent = Agent(env=env, buffer=buffer)
         self.total_reward = 0
         self.episode_reward = 0
 
+        self.train_episodes = train_episodes
+        self.episodes_done = 0
+
+        self.actor_net = actor_net
+
     def __iter__(self) -> Iterator[Tuple]:
-        sampled_exps = self.buffer.sample(self.batch_size)
-        states, actions, rewards, dones, new_states = ([] for i in range(5))
-        for exp in sampled_exps:
-            states.append(exp.state)
-            actions.append(exp.action)
-            rewards.append(exp.reward)
-            dones.append(exp.done)
-            new_states.append(exp.new_state)
-
-        for i in range(len(dones)):
-            yield states[i], actions[i], rewards[i], dones[i], new_states[i]
-
-    def populate(self, steps: int = 1000) -> None:
-        """Carries out several random steps through the environment to initially
-        fill up the replay buffer with experiences. Called by Lightning Callback
-        just before the traing starts.
-
-        Args:
-            steps : number of random steps to populate the buffer with
         """
-        for _ in range(steps):
-            self.agent.play_step(self.actor)
+        Agent has to be implemented here. Super ugly but with Lightning and RL
+        there are not non-wacky solutions.
+        """
+        # TODO implement commented stuff. Find a solution for logging.
+        # step through environment with agent
+        reward, done = self.agent.play_step(self.actor_net)
+        self.episode_reward += reward
+        # self.log("episode reward", self.episode_reward)
+        if done:
+            self.total_reward = self.episode_reward
+            self.episode_reward = 0
+            # self.log_dict(
+            #         {
+            #             "reward": reward,
+            #         }
+            #     )
+            # self.log("total_reward", self.total_reward, prog_bar=True)
+            self.episodes_done += 1
+            # self.log("episodes done", self.episodes_done)
+            if self.episodes_done >= self.train_episodes:
+                return
+
+        sampled_exps = self.buffer.sample(self.batch_size)
+
+        yield sampled_exps
