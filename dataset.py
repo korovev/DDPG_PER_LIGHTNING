@@ -20,9 +20,6 @@ class RLDataset(IterableDataset):
         self.sample_size = sample_size
 
     def __iter__(self) -> Iterator[Tuple]:
-        # states, actions, rewards, dones, new_states = self.buffer.sample(
-        #     self.sample_size
-        # )
         sampled_exps = self.buffer.sample(self.sample_size)
         states, actions, rewards, dones, new_states = ([] for i in range(5))
         for exp in sampled_exps:

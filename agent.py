@@ -22,7 +22,6 @@ class Agent:
         self.env = env
         self.buffer = buffer
         self.reset()
-        self.env.render()
         self.state = self.env.reset()
         self.state = torch.from_numpy(self.state)
 
@@ -48,12 +47,6 @@ class Agent:
         action_upper_bound = self.env.action_space.high[0]
         action_lower_bound = self.env.action_space.low[0]
 
-        # FIXME
-        # sampled_actions = net(state).cpu().numpy() + self.noise_model()
-        # net = net.to("cpu")
-        # print(next(net.parameters()).is_cuda)
-        # exit()
-
         state = self.state.clone().detach().to(device)
         sampled_actions = net(state, action_upper_bound) + torch.tensor(
             self.noise_model()
@@ -62,8 +55,8 @@ class Agent:
         # make sure action is within bounds
         legal_action = np.clip(
             sampled_actions.cpu().numpy(),
-            action_upper_bound,
             action_lower_bound,
+            action_upper_bound,
         )
 
         return torch.tensor(legal_action).to(device)
@@ -79,6 +72,7 @@ class Agent:
         Args:
             -   net: Actor DDPG network
         """
+        self.env.render()
         action = self.get_action(net, device=net.device)
 
         # do step in the environment
@@ -89,6 +83,7 @@ class Agent:
         self.state = self.state.to(net.device)
         exp = Experience(self.state, action, reward, done, new_state)
         self.buffer.add(exp)
+        print(len(self.buffer))
 
         self.state = new_state
         if done:
