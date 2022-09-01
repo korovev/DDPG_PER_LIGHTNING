@@ -18,6 +18,19 @@ import torch.nn.functional as F
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
+from simple_config import (
+    ACTOR_LR,
+    BATCH_SIZE,
+    CRITIC_LR,
+    ENV,
+    EPISODE_LENGTH,
+    GAMMA,
+    SYNC_RATE,
+    TAU,
+    TRAIN_EPISODES,
+    USE_PRIORITIZED_BUFFER,
+)
+
 torch.autograd.set_detect_anomaly(True)
 
 
@@ -72,6 +85,9 @@ class DDPGCritic(LightningModule):
         self.l1 = nn.Linear(state_dim, 400)
         self.l2 = nn.Linear(400 + action_dim, 300)
         self.l3 = nn.Linear(300, action_dim)
+        # self.l1 = nn.Linear(state_dim + action_dim, 400)
+        # self.l2 = nn.Linear(400, 300)
+        # self.l3 = nn.Linear(300, action_dim)
 
     def forward(self, state: Tensor, action):
         x = F.relu(self.l1(state))
@@ -79,6 +95,11 @@ class DDPGCritic(LightningModule):
         x = F.relu(self.l2(x))
         x = self.l3(x)
         return x
+        # state_action = torch.cat([state, action], 1)
+        # x = F.relu(self.l1(state_action))
+        # x = F.relu(self.l2(x))
+        # x = self.l3(x)
+        # return x
 
 
 class DDPG(LightningModule):
@@ -86,17 +107,16 @@ class DDPG(LightningModule):
 
     def __init__(
         self,
-        batch_size: int = 64,
-        actor_lr: float = 1e-4,
-        critic_lr: float = 5e-4,
-        env: str = "Pendulum-v1",
-        gamma: float = 0.99,
-        sync_rate: int = 10,
-        episode_length: int = 200,
-        tau: float = 5e-3,
-        train_episodes: float = 300,
-        use_prioritized_buffer: bool = 0,
-        warm_start_steps: int = 1000,
+        batch_size: int = BATCH_SIZE,
+        actor_lr: float = ACTOR_LR,
+        critic_lr: float = CRITIC_LR,
+        env: str = ENV,
+        gamma: float = GAMMA,
+        sync_rate: int = SYNC_RATE,
+        episode_length: int = EPISODE_LENGTH,
+        tau: float = TAU,
+        train_episodes: float = TRAIN_EPISODES,
+        use_prioritized_buffer: bool = USE_PRIORITIZED_BUFFER,
     ) -> None:
         """
         Args:
@@ -270,14 +290,14 @@ class DDPG(LightningModule):
         ****** Super hacky thing but apparently no other solutions exists ******
         """
         # Find all the layers containing the weights avoiding the bias layers
-        for layer_name, layer_content in source_net.state_dict().items():
-            if "weight" in layer_name:
-                target_net.state_dict()[layer_name] *= (1 - tau) + (tau * layer_content)
+        # for layer_name, layer_content in source_net.state_dict().items():
+        #     if "weight" in layer_name:
+        #         target_net.state_dict()[layer_name] *= (1 - tau) + (tau * layer_content)
 
-        # for q_param, target_param in zip(
-        #     source_net.parameters(), target_net.parameters()
-        # ):
-        #     target_param.data.copy_((1.0 - tau) * target_param.data + tau * q_param)
+        for q_param, target_param in zip(
+            source_net.parameters(), target_net.parameters()
+        ):
+            target_param.data.copy_((1.0 - tau) * target_param.data + tau * q_param)
 
     def training_step(
         self,
@@ -373,7 +393,7 @@ class DDPG(LightningModule):
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
-        dataset = RLDataset(self.buffer, self.hparams.episode_length)
+        dataset = RLDataset(self.buffer, self.hparams.batch_size)
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,

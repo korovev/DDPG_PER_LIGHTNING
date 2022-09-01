@@ -1,4 +1,5 @@
 from ddpg import DDPG
+from simple_config import WARM_POPULATE, TRAINER_MAX_EPOCHS, VAL_CHECK_INTERVAL
 
 import torch
 from pytorch_lightning import Trainer
@@ -12,7 +13,7 @@ import numpy as np
 
 class WarmStartFillBufferCallback(Callback):
     def on_train_start(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
-        trainer.model.populate(1000)
+        trainer.model.populate(WARM_POPULATE)
 
 
 if __name__ == "__main__":
@@ -22,8 +23,8 @@ if __name__ == "__main__":
     trainer = Trainer(
         accelerator="auto",
         # devices=1 if torch.cuda.is_available() else None,
-        max_epochs=150000,
-        val_check_interval=100,
+        max_epochs=TRAINER_MAX_EPOCHS,
+        val_check_interval=VAL_CHECK_INTERVAL,
         # logger=CSVLogger(save_dir="logs/"),
         callbacks=[WarmStartFillBufferCallback()],
         logger=wandb_logger,

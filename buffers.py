@@ -4,6 +4,7 @@ from buffer_utils import (
     SumSegmentTree,
     MinSegmentTree,
 )
+from simple_config import ALPHA, BETA
 
 from typing import Tuple, List
 
@@ -67,7 +68,7 @@ class Buffer(object):
 class PrioritizedReplayBuffer(Buffer):
     """PER Buffer for Prioritized Experience Replay"""
 
-    def __init__(self, size: int = 100000, alpha: float = 0) -> None:
+    def __init__(self, size: int = 100000, alpha: float = ALPHA) -> None:
         """
         Create Prioritized Replay buffer.
         Parameters
@@ -110,7 +111,7 @@ class PrioritizedReplayBuffer(Buffer):
             res.append(idx)
         return res
 
-    def sample(self, batch_size: int, beta: float) -> Experience_weight_idx:
+    def sample(self, batch_size: int, beta: float = BETA) -> Experience_weight_idx:
         """
         Sample a batch of experiences. compared to ReplayBuffer.sample it also
         returns importance weights and idxes of sampled experiences.

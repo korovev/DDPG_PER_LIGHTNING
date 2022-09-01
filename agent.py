@@ -1,6 +1,7 @@
 from buffers import Buffer
 from agent_utils import OUActionNoise
 from buffer_utils import Experience
+from simple_config import OU_NOISE_STD
 
 import gym
 import numpy as np
@@ -25,13 +26,16 @@ class Agent:
         self.state = self.env.reset()
         self.state = torch.from_numpy(self.state)
 
-        _std = 0.8
+        _std = OU_NOISE_STD
         self.noise_model = OUActionNoise(
             mean=np.zeros(1) * 1.2, std_deviation=float(_std) * np.ones(1)
         )
 
     def reset(self) -> None:
         """Resents the environment and updates the state."""
+        # FIXME check if this gets called
+        print("AAAAAAAAAAAAAAAAAAAAAAAa\n\n")
+        exit()
         self.state = self.env.reset()
         self.state = torch.from_numpy(self.state)
 
