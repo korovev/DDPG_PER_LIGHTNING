@@ -34,8 +34,6 @@ class Agent:
     def reset(self) -> None:
         """Resents the environment and updates the state."""
         # FIXME check if this gets called
-        print("AAAAAAAAAAAAAAAAAAAAAAAa\n\n")
-        exit()
         self.state = self.env.reset()
         self.state = torch.from_numpy(self.state)
 

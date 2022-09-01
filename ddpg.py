@@ -1,6 +1,5 @@
 from buffer_utils import Experience, Experience_weight_idx
-from buffers import Buffer, PrioritizedReplayBuffer
-from agent import Agent
+
 from dataset import RLDataset
 
 from typing import Tuple, OrderedDict, List
@@ -167,20 +166,18 @@ class DDPG(LightningModule):
         Initialize buffer. If use_prioritized_buffer = 0 the normal buffer will 
         be used, otherwise the prioritized experience replay buffer.
         """
-        self.buffer = (
-            PrioritizedReplayBuffer()
-            if self.hparams.use_prioritized_buffer
-            else Buffer()
-        )
+        # self.buffer = (
+        #     PrioritizedReplayBuffer()
+        #     if self.hparams.use_prioritized_buffer
+        #     else Buffer()
+        # ) #! Initialized in dataset.py in dataset
 
         """
         Initialize Agent to play the game
         """
-        self.agent = Agent(env=self.env, buffer=self.buffer)
-        self.total_reward = 0
-        self.episode_reward = 0
-
-        # self.populate(self.hparams.warm_start_steps)
+        # self.agent = Agent(env=self.env, buffer=self.buffer)
+        # self.total_reward = 0
+        # self.episode_reward = 0 #! Initialized in dataset.py in dataset
 
     def populate(self, steps: int = 1000) -> None:
         """Carries out several random steps through the environment to initially
@@ -321,7 +318,11 @@ class DDPG(LightningModule):
             self.log("episode reward", self.episode_reward)
 
             # FIXME check if random choice is ok even for PER
-            batch_indices = np.random.choice(len(self.buffer), self.hparams.batch_size)
+            # batch_indices = np.random.choice(len(self.buffer), self.hparams.batch_size)
+            batch = self.buffer.sample(self.hparams.batch_size)
+            print(batch_indices)
+            exit()
+            # FIXME I should use the sample method of the buffer instead of doing this
             batch = self.buffer[batch_indices]
 
             # calculates training loss
@@ -393,7 +394,7 @@ class DDPG(LightningModule):
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
-        dataset = RLDataset(self.buffer, self.hparams.batch_size)
+        dataset = RLDataset(self.hparams.batch_size)
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,

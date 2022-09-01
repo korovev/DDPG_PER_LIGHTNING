@@ -3,7 +3,7 @@
 For train.py                      #
 -----------------------------------
 """
-WARM_POPULATE = 1000
+WARM_POPULATE = 0
 TRAINER_MAX_EPOCHS = 150000
 VAL_CHECK_INTERVAL = 100
 

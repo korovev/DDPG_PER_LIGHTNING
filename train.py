@@ -13,7 +13,10 @@ import numpy as np
 
 class WarmStartFillBufferCallback(Callback):
     def on_train_start(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
-        trainer.model.populate(WARM_POPULATE)
+        if WARM_POPULATE > 0:
+            trainer.model.populate(WARM_POPULATE)
+        else:
+            pass
 
 
 if __name__ == "__main__":
