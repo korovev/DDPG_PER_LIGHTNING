@@ -72,7 +72,7 @@ class Agent:
         Args:
             -   net: Actor DDPG network
         """
-        self.env.render()
+        # self.env.render()
         action = self.get_action(net, device=net.device)
 
         # do step in the environment
@@ -83,7 +83,6 @@ class Agent:
         self.state = self.state.to(net.device)
         exp = Experience(self.state, action, reward, done, new_state)
         self.buffer.add(exp)
-        print(len(self.buffer))
 
         self.state = new_state
         if done:

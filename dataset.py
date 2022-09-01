@@ -17,7 +17,7 @@ class RLDataset(IterableDataset):
 
     def __init__(self, buffer: Buffer, sample_size: int = 200) -> None:
         self.buffer = buffer
-        self.sample_size = sample_size
+        self.sample_size = 1  # sample_size
 
     def __iter__(self) -> Iterator[Tuple]:
         sampled_exps = self.buffer.sample(self.sample_size)

@@ -23,7 +23,7 @@ if __name__ == "__main__":
         accelerator="auto",
         # devices=1 if torch.cuda.is_available() else None,
         max_epochs=150000,
-        val_check_interval=50,
+        val_check_interval=100,
         # logger=CSVLogger(save_dir="logs/"),
         callbacks=[WarmStartFillBufferCallback()],
         logger=wandb_logger,

@@ -164,7 +164,8 @@ class DDPG(LightningModule):
 
     def populate(self, steps: int = 1000) -> None:
         """Carries out several random steps through the environment to initially
-        fill up the replay buffer with experiences.
+        fill up the replay buffer with experiences. Called by Lightning Callback
+        just before the traing starts.
 
         Args:
             steps : number of random steps to populate the buffer with
@@ -255,6 +256,29 @@ class DDPG(LightningModule):
         else:
             raise ValueError("The 'module' argument can only be 'critic' or 'actor'")
 
+    def _update_target(
+        self, target_net: LightningModule, source_net: LightningModule, tau: float
+    ) -> None:
+        """
+        Soft updates the weights of target net with source net.
+        Arguments
+        ----------
+            -   target_net : target networks to which infer the source net's weights
+            -   source_net : target networks from which infer the weights to target
+            -   tau : weighting factor for the weights to be inferred
+
+        ****** Super hacky thing but apparently no other solutions exists ******
+        """
+        # Find all the layers containing the weights avoiding the bias layers
+        for layer_name, layer_content in source_net.state_dict().items():
+            if "weight" in layer_name:
+                target_net.state_dict()[layer_name] *= (1 - tau) + (tau * layer_content)
+
+        # for q_param, target_param in zip(
+        #     source_net.parameters(), target_net.parameters()
+        # ):
+        #     target_param.data.copy_((1.0 - tau) * target_param.data + tau * q_param)
+
     def training_step(
         self,
         batch: Tuple[Tensor, Tensor],
@@ -287,9 +311,9 @@ class DDPG(LightningModule):
                 self.total_reward = self.episode_reward
                 self.episode_reward = 0
 
-            # FIXME Not sure what this is for, investigate. Soft update of target network
+            # Soft update
             if self.global_step % self.hparams.sync_rate == 0:
-                self.target_actor.load_state_dict(self.actor.state_dict())
+                self._update_target(self.target_actor, self.actor, self.hparams.tau)
 
             self.log_dict(
                 {
@@ -320,9 +344,9 @@ class DDPG(LightningModule):
                 self.total_reward = self.episode_reward
                 self.episode_reward = 0
 
-            # FIXME Not sure what this is for, investigate. Soft update of target network
+            # FIXME Soft update
             if self.global_step % self.hparams.sync_rate == 0:
-                self.target_critic.load_state_dict(self.critic.state_dict())
+                self._update_target(self.target_critic, self.critic, self.hparams.tau)
 
             self.log_dict(
                 {
