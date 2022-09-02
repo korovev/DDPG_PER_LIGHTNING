@@ -1,3 +1,4 @@
+from operator import concat
 from buffer_utils import Experience, Experience_weight_idx
 from buffers import Buffer, PrioritizedReplayBuffer
 from agent import Agent
@@ -12,6 +13,7 @@ import torch
 from IPython.display import display
 
 from pytorch_lightning import LightningModule
+from pytorch_lightning.loggers import WandbLogger
 
 from torch import Tensor, nn
 import torch.nn.functional as F
@@ -82,20 +84,44 @@ class DDPGCritic(LightningModule):
                 environment;
         """
         super(DDPGCritic, self).__init__()
-        self.l1 = nn.Linear(state_dim, 400)
-        self.l2 = nn.Linear(400 + action_dim, 300)
-        self.l3 = nn.Linear(300, action_dim)
+
+        self.state_l1 = nn.Linear(state_dim, 16)
+        self.state_l2 = nn.Linear(16, 32)
+
+        self.action_l1 = nn.Linear(action_dim, 32)
+
+        self.act_st_l1 = nn.Linear(64, 256)
+        self.act_st_l2 = nn.Linear(256, 256)
+        self.out = nn.Linear(256, action_dim)
+
+        # self.l1 = nn.Linear(state_dim, 16)
+        # self.l2 = nn.Linear(16 + action_dim, 32)
+        # self.l3 = nn.Linear(32, action_dim)
+        # --------------------------------------------
         # self.l1 = nn.Linear(state_dim + action_dim, 400)
         # self.l2 = nn.Linear(400, 300)
         # self.l3 = nn.Linear(300, action_dim)
 
     def forward(self, state: Tensor, action):
-        x = F.relu(self.l1(state))
-        x = torch.cat([x, action], -1)
-        x = F.relu(self.l2(x))
-        x = self.l3(x)
-        return x
-        # state_action = torch.cat([state, action], 1)
+        state_x = F.relu(self.state_l1(state))
+        state_out = F.relu(self.state_l2(state_x))
+
+        action_out = F.relu(self.action_l1(action))
+
+        cat = torch.cat([state_out, action_out], dim=-1)
+
+        act_st = F.relu(self.act_st_l1(cat))
+        act_st = F.relu(self.act_st_l2(act_st))
+        out = self.out(act_st)
+        return out
+
+        # x = F.relu(self.l1(state))
+        # x = torch.cat([x, action], -1)
+        # x = F.relu(self.l2(x))
+        # x = self.l3(x)
+        # return x
+        # state_action = torch.cat([state, action], -1)
+        # # print(f"state_action shape: {state_action.shape}")
         # x = F.relu(self.l1(state_action))
         # x = F.relu(self.l2(x))
         # x = self.l3(x)
@@ -107,6 +133,7 @@ class DDPG(LightningModule):
 
     def __init__(
         self,
+        logger: WandbLogger,
         batch_size: int = BATCH_SIZE,
         actor_lr: float = ACTOR_LR,
         critic_lr: float = CRITIC_LR,
@@ -190,7 +217,7 @@ class DDPG(LightningModule):
         Args:
             steps : number of random steps to populate the buffer with
         """
-        dummy_agent = Agent(self.env)
+        dummy_agent = Agent(self.env, self.buffer)
         for _ in range(steps):
             dummy_agent.play_step(self.actor)
 
@@ -246,12 +273,20 @@ class DDPG(LightningModule):
                 next_state_batch_tensor, self.action_upper_bound
             )
 
-            reward_batch = torch.tensor(reward_batch, device=self.device)
+            reward_batch = torch.tensor(reward_batch, device=self.device).unsqueeze(
+                dim=1
+            )
             y = reward_batch + self.hparams.gamma * self.target_critic(
                 next_state_batch_tensor, target_actions
-            )
+            ).squeeze(dim=-1)
+            # print(
+            #     f"reward_batch shape: {reward_batch.shape}\n \
+            #         self.target_critic shape: {self.target_critic(next_state_batch_tensor, target_actions).squeeze(dim=-1).shape}"
+            # )
 
-            critic_value = self.critic(state_batch_tensor, action_batch_tensor)
+            critic_value = self.critic(state_batch_tensor, action_batch_tensor).squeeze(
+                dim=-1
+            )
             critic_loss = nn.MSELoss()(y, critic_value)
 
             return critic_loss
@@ -270,7 +305,7 @@ class DDPG(LightningModule):
             state_batch_tensor = self._tensorify_gpufy(state_batch)
 
             actions = self.actor(state_batch_tensor, self.action_upper_bound)
-            critic_value = self.critic(state_batch_tensor, actions)
+            critic_value = self.critic(state_batch_tensor, actions).squeeze(dim=-1)
             actor_loss = -torch.mean(critic_value)
 
             return actor_loss
@@ -293,7 +328,10 @@ class DDPG(LightningModule):
         # Find all the layers containing the weights avoiding the bias layers
         # for layer_name, layer_content in source_net.state_dict().items():
         #     if "weight" in layer_name:
-        #         target_net.state_dict()[layer_name] *= (1 - tau) + (tau * layer_content)
+        #         # target_net.state_dict()[layer_name] *= (1 - tau) + (tau * layer_content)
+        #         target_net.state_dict()[layer_name] = target_net.state_dict()[
+        #             layer_name
+        #         ] * (1 - tau) + (tau * layer_content)
 
         for q_param, target_param in zip(
             source_net.parameters(), target_net.parameters()
@@ -335,20 +373,17 @@ class DDPG(LightningModule):
 
         # Critic optimizer idx
         elif optimizer_idx == 1:
-
             # calculates training loss
             critic_loss = self.ddpg_loss(batch, "critic")
 
             # FIXME Soft update
             if self.global_step % self.hparams.sync_rate == 0:
                 self._update_target(self.target_critic, self.critic, self.hparams.tau)
-
             self.log_dict(
                 {
                     "train_critic_loss": critic_loss,
                 }
             )
-
             return critic_loss
 
         else:
@@ -368,7 +403,12 @@ class DDPG(LightningModule):
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
         dataset = RLDataset(
-            self.buffer, self.hparams.batch_size, self.env, self.actor, TRAIN_EPISODES
+            self.buffer,
+            self.hparams.batch_size,
+            self.env,
+            self.actor,
+            TRAIN_EPISODES,
+            self.hparams.logger,
         )
         dataloader = DataLoader(
             dataset=dataset,

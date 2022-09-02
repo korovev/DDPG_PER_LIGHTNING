@@ -33,7 +33,6 @@ class Agent:
 
     def reset(self) -> None:
         """Resents the environment and updates the state."""
-        # FIXME check if this gets called
         self.state = self.env.reset()
         self.state = torch.from_numpy(self.state)
 
@@ -81,7 +80,6 @@ class Agent:
         new_state, reward, done, _ = self.env.step(action.cpu().numpy())
         new_state = torch.from_numpy(new_state).to(net.device)
 
-        # FIXME check if this is the inplace operation pytorch complaints about
         self.state = self.state.to(net.device)
         exp = Experience(self.state, action, reward, done, new_state)
         self.buffer.add(exp)

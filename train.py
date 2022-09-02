@@ -21,7 +21,7 @@ class WarmStartFillBufferCallback(Callback):
 
 if __name__ == "__main__":
     wandb_logger = WandbLogger(project="DDPG", log_model="all")
-    model = DDPG()
+    model = DDPG(wandb_logger)
 
     trainer = Trainer(
         accelerator="auto",

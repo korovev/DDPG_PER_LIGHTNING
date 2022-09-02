@@ -8,6 +8,7 @@ from torch.utils.data.dataset import IterableDataset
 
 import gym
 from pytorch_lightning import LightningModule
+from pytorch_lightning.loggers import WandbLogger
 
 
 class RLDataset(IterableDataset):
@@ -26,6 +27,7 @@ class RLDataset(IterableDataset):
         env: gym.Env,
         actor_net: LightningModule,
         train_episodes: int,
+        logger: WandbLogger,
     ) -> None:
         """
         Initialize buffer. If use_prioritized_buffer = 0 the normal buffer will
@@ -44,27 +46,24 @@ class RLDataset(IterableDataset):
 
         self.actor_net = actor_net
 
+        self.logger = logger
+
     def __iter__(self) -> Iterator[Tuple]:
         """
         Agent has to be implemented here. Super ugly but with Lightning and RL
         there are not non-wacky solutions.
         """
-        # TODO implement commented stuff. Find a solution for logging.
         # step through environment with agent
         reward, done = self.agent.play_step(self.actor_net)
         self.episode_reward += reward
-        # self.log("episode reward", self.episode_reward)
+        self.logger.log_metrics({"episode reward": self.episode_reward})
         if done:
             self.total_reward = self.episode_reward
             self.episode_reward = 0
-            # self.log_dict(
-            #         {
-            #             "reward": reward,
-            #         }
-            #     )
-            # self.log("total_reward", self.total_reward, prog_bar=True)
+            self.logger.log_metrics({"reward": reward})
+            self.logger.log_metrics({"total_reward": self.total_reward})
             self.episodes_done += 1
-            # self.log("episodes done", self.episodes_done)
+            self.logger.log_metrics({"episodes done": self.episodes_done})
             if self.episodes_done >= self.train_episodes:
                 return
 
