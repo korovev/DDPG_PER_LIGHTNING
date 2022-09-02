@@ -400,6 +400,10 @@ class DDPG(LightningModule):
 
         return [actor_optimizer, critic_optimizer]
 
+    def test_step(self, model, dataloader):
+        print("AAAAAAAAAAAAAAAAAAA\n\n")
+        exit()
+
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
         dataset = RLDataset(

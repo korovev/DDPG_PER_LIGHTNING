@@ -3,9 +3,10 @@
 For train.py                      #
 -----------------------------------
 """
-WARM_POPULATE = 100000
+WARM_POPULATE = 0
 TRAINER_MAX_EPOCHS = 150000
 VAL_CHECK_INTERVAL = 100
+TRAIN = False
 
 """ 
 -----------------------------------
@@ -27,7 +28,7 @@ BETA = 0.1
 For ddpg.py                       #
 -----------------------------------
 """
-ENV = "LunarLanderContinuous-v2"  # "Pendulum-v1"
+ENV = "Pendulum-v1"  # "LunarLanderContinuous-v2"
 USE_PRIORITIZED_BUFFER = False
 BATCH_SIZE = 64
 ACTOR_LR = 1e-4
