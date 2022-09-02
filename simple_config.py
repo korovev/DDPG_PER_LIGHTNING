@@ -27,7 +27,7 @@ BETA = 0.1
 For ddpg.py                       #
 -----------------------------------
 """
-ENV = "Pendulum-v1"
+ENV = "LunarLanderContinuous-v2"  # "Pendulum-v1"
 USE_PRIORITIZED_BUFFER = False
 BATCH_SIZE = 64
 ACTOR_LR = 1e-4
