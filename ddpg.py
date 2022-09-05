@@ -31,6 +31,7 @@ from simple_config import (
     TAU,
     TRAIN_EPISODES,
     USE_PRIORITIZED_BUFFER,
+    TEST_EPISODES,
 )
 
 torch.autograd.set_detect_anomaly(True)
@@ -400,11 +401,15 @@ class DDPG(LightningModule):
 
         return [actor_optimizer, critic_optimizer]
 
-    def test_step(self, model, dataloader):
-        print("AAAAAAAAAAAAAAAAAAA\n\n")
-        exit()
+    def test_step(
+        self,
+        batch: Tuple[Tensor, Tensor],
+        nb_batch,
+    ):
+        print("----------- TESTING ------------")
 
-    def __dataloader(self) -> DataLoader:
+    def train_dataloader(self) -> DataLoader:
+        """Get train loader."""
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
         dataset = RLDataset(
             self.buffer,
@@ -420,9 +425,9 @@ class DDPG(LightningModule):
         )
         return dataloader
 
-    def train_dataloader(self) -> DataLoader:
-        """Get train loader."""
-        return self.__dataloader()
+    def test_dataloader(self) -> DataLoader:
+        # return self.__dataloader()
+        pass
 
     def get_device(self, batch) -> str:
         """Retrieve device currently being used by minibatch."""

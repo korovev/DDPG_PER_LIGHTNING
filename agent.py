@@ -1,7 +1,7 @@
 from buffers import Buffer
 from agent_utils import OUActionNoise
 from buffer_utils import Experience
-from simple_config import OU_NOISE_STD
+from simple_config import OU_NOISE_STD, RENDER
 
 import gym
 import numpy as np
@@ -73,7 +73,8 @@ class Agent:
         Args:
             -   net: Actor DDPG network
         """
-        # self.env.render()
+        if RENDER:
+            self.env.render()
         action = self.get_action(net, device=net.device)
 
         # do step in the environment

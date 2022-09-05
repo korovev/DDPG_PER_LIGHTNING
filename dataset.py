@@ -64,8 +64,8 @@ class RLDataset(IterableDataset):
             self.logger.log_metrics({"total_reward": self.total_reward})
             self.episodes_done += 1
             self.logger.log_metrics({"episodes done": self.episodes_done})
-            if self.episodes_done >= self.train_episodes:
-                return
+        if self.episodes_done > self.train_episodes:
+            exit()
 
         sampled_exps = self.buffer.sample(self.batch_size)
 
