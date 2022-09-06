@@ -1,5 +1,4 @@
-from operator import concat
-from buffer_utils import Experience, Experience_weight_idx, LinearSchedule
+from buffer_utils import Experience
 from buffers import Buffer, PrioritizedReplayBuffer
 from agent import Agent
 from dataset import RLDataset
@@ -8,9 +7,7 @@ from typing import Tuple, OrderedDict, List
 
 import gym
 import numpy as np
-import pandas as pd
 import torch
-from IPython.display import display
 
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
@@ -291,10 +288,12 @@ class DDPG(LightningModule):
             )
             y = reward_batch + self.hparams.gamma * self.target_critic(
                 next_state_batch_tensor, target_actions
-            ).squeeze(dim=-1)
+            ).squeeze(
+                dim=1  # FIXME was -1 originally
+            )
 
             critic_value = self.critic(state_batch_tensor, action_batch_tensor).squeeze(
-                dim=-1
+                dim=1  # FIXME was -1 originally
             )
             td_errors = y - critic_value
 
@@ -442,6 +441,8 @@ class DDPG(LightningModule):
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,
+            # num_workers=16,
+            # pin_memory=True,
         )
         return dataloader
 

@@ -86,16 +86,22 @@ class Agent:
 
         if USE_PRIORITIZED_BUFFER:
             exp = Experience_weight_idx(
-                self.state,
-                action,
+                self.state.cpu(),
+                action.cpu(),
                 reward,
                 done,
-                new_state,
+                new_state.cpu(),
                 1 / self.buffer._maxsize,
                 -1,
             )
         else:
-            exp = Experience(self.state, action, reward, done, new_state)
+            exp = Experience(
+                self.state.cpu(),
+                action.cpu(),
+                reward,
+                done,
+                new_state.cpu(),
+            )
 
         self.buffer.add(exp)
 
