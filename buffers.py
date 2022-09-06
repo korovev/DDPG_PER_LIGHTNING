@@ -51,7 +51,7 @@ class Buffer(object):
             self._storage[self._next_idx] = experience
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
-    def sample(self, batch_size: int) -> Experience:
+    def sample(self, batch_size: int) -> List[Experience]:
         """
         Sample a batch of experiences.
         Parameters
@@ -67,7 +67,11 @@ class Buffer(object):
 class PrioritizedReplayBuffer(Buffer):
     """PER Buffer for Prioritized Experience Replay"""
 
-    def __init__(self, size: int = 100000, alpha: float = ALPHA) -> None:
+    def __init__(
+        self,
+        size: int = 100000,
+        alpha: float = ALPHA,
+    ) -> None:
         """
         Create Prioritized Replay buffer.
         Parameters
@@ -110,7 +114,9 @@ class PrioritizedReplayBuffer(Buffer):
             res.append(idx)
         return res
 
-    def sample(self, batch_size: int, beta: float = BETA) -> Experience_weight_idx:
+    def sample(
+        self, batch_size: int, beta: float = BETA
+    ) -> List[Experience_weight_idx]:
         """
         Sample a batch of experiences. compared to ReplayBuffer.sample it also
         returns importance weights and idxes of sampled experiences.
@@ -132,9 +138,14 @@ class PrioritizedReplayBuffer(Buffer):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self._storage)) ** (-beta)
             weights.append(weight / max_weight)
+
+            """ Luca -------------------------"""
+            self._storage[idx] = self._storage[idx]._replace(idx=idx)
+            self._storage[idx] = self._storage[idx]._replace(weight=weight)
+            """ ------------------------------ """
+
         weights = np.array(weights)
 
-        # sampled_experiences = self._storage[idxes]
         sampled_experiences = [self._storage[idx] for idx in idxes]
 
         return sampled_experiences

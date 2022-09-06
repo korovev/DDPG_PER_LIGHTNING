@@ -1,8 +1,12 @@
 from ddpg import DDPG
-from simple_config import WARM_POPULATE, TRAINER_MAX_EPOCHS, VAL_CHECK_INTERVAL, TRAIN
-from dataset import RLDataset
+from simple_config import (
+    WARM_POPULATE,
+    TRAINER_MAX_EPOCHS,
+    VAL_CHECK_INTERVAL,
+    TRAIN,
+    ENV,
+)
 
-import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning import LightningModule
@@ -11,7 +15,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 from pathlib import Path
 
-import numpy as np
 from datetime import datetime
 
 
@@ -36,6 +39,7 @@ class PeriodicCheckpoint(ModelCheckpoint):
         if pl_module.global_step % self.every == 0:
             current = (
                 Path(self.dirpath)
+                / f"{ENV}"
                 / f"{datetime_run_start}"
                 / f"latest-{pl_module.global_step}.ckpt"
             )
@@ -72,14 +76,7 @@ if __name__ == "__main__":
 
     else:
         model = checkpoint_model = DDPG.load_from_checkpoint(
-            "DDPG/g5xi4a4o/checkpoints/latest-90000.ckpt"
+            "/home/korovev/Documents/currently_active_works/advanced_topics_RL_Capobianco/source/project/DDPG_PER_LIGHTNING/ckpt/Pendulum-v1/09-05-2022_23:58:06/latest-70000.ckpt"
         )
 
-        trainer = Trainer(
-            accelerator="auto",
-            default_root_dir=".",
-            logger=wandb_logger,
-        )
-
-        train_dataloader = model.test_dataloader()
-        trainer.test(model, dataloaders=train_dataloader)
+        model.test()

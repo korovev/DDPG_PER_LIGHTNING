@@ -1,5 +1,5 @@
 from operator import concat
-from buffer_utils import Experience, Experience_weight_idx
+from buffer_utils import Experience, Experience_weight_idx, LinearSchedule
 from buffers import Buffer, PrioritizedReplayBuffer
 from agent import Agent
 from dataset import RLDataset
@@ -31,7 +31,9 @@ from simple_config import (
     TAU,
     TRAIN_EPISODES,
     USE_PRIORITIZED_BUFFER,
+    PRIORITIZED_REPLAY_EPS,
     TEST_EPISODES,
+    RENDER,
 )
 
 torch.autograd.set_detect_anomaly(True)
@@ -168,10 +170,6 @@ class DDPG(LightningModule):
         n_actions = self.env.action_space.shape[0]
         self.action_upper_bound = self.env.action_space.high[0]
 
-        # """ Buffer parameters """
-        # self.use_prioritized_buffer = self.hparams.use_prioritized_buffer
-        # self.batch_size = self.hparams.batch_size
-
         """ 
         Initialize actor, critic, target actor and target critic. Targets are 
         assigned the same weights of the original networks. 
@@ -200,13 +198,10 @@ class DDPG(LightningModule):
             if self.hparams.use_prioritized_buffer
             else Buffer()
         )
-
-        """
-        Initialize Agent to play the game
-        """
-        # self.agent = Agent(env=self.env, buffer=self.buffer)
-        # self.total_reward = 0
-        # self.episode_reward = 0  #! Initialized in dataset.py in dataset
+        if self.hparams.use_prioritized_buffer:
+            self.buffer = PrioritizedReplayBuffer()
+        else:
+            self.buffer = Buffer()
 
         # self.populate(self.hparams.warm_start_steps)
 
@@ -250,21 +245,38 @@ class DDPG(LightningModule):
     ) -> Tuple[Tensor, Tensor]:
         """
         Calculates the mse loss using a mini batch from the replay buffer. See
-        pseudo-code formulas.
+        pseudo-code formulas. #TODO devo sistemare sta funzione che è uno spaghetti code di merda
 
         Args:
             batch: current mini batch of replay data
         """
         if module == "critic":
-            state_batch, action_batch, reward_batch, dones, next_state_batch = (
-                [] for i in range(5)
-            )
+            (
+                state_batch,
+                action_batch,
+                reward_batch,
+                dones,
+                next_state_batch,
+                weights,
+                idxes,
+            ) = ([] for i in range(7))
             for exp in batch:
                 state_batch.append(exp.state.float())
                 action_batch.append(exp.action.float())
                 reward_batch.append(float(exp.reward))
                 dones.append(exp.done)
                 next_state_batch.append(exp.new_state.float())
+
+                if USE_PRIORITIZED_BUFFER:
+                    idxes.append(exp.idx)
+
+                    weights.append(exp.weight.float())
+            if USE_PRIORITIZED_BUFFER:
+                """They do not use importance sampling weights, therefore
+                they set all importance sampling weights to 1"""
+                weights *= 0 + 1
+                weights_tensor = self._tensorify_gpufy(weights)
+                weights_tensor = torch.sqrt(weights_tensor)
 
             next_state_batch_tensor = self._tensorify_gpufy(next_state_batch)
             state_batch_tensor = self._tensorify_gpufy(state_batch)
@@ -280,15 +292,30 @@ class DDPG(LightningModule):
             y = reward_batch + self.hparams.gamma * self.target_critic(
                 next_state_batch_tensor, target_actions
             ).squeeze(dim=-1)
-            # print(
-            #     f"reward_batch shape: {reward_batch.shape}\n \
-            #         self.target_critic shape: {self.target_critic(next_state_batch_tensor, target_actions).squeeze(dim=-1).shape}"
-            # )
 
             critic_value = self.critic(state_batch_tensor, action_batch_tensor).squeeze(
                 dim=-1
             )
-            critic_loss = nn.MSELoss()(y, critic_value)
+            td_errors = y - critic_value
+
+            # Create a zero tensor
+            zero_tensor = torch.zeros(td_errors.shape, device=self.device)
+            if USE_PRIORITIZED_BUFFER:
+                # Weight TD errors
+                weighted_TD_errors = torch.mul(td_errors, weights_tensor)
+                # Compute critic loss, MSE of weighted TD_r
+                critic_loss = F.mse_loss(weighted_TD_errors, zero_tensor)
+            else:
+                critic_loss = F.mse_loss(td_errors, zero_tensor)
+
+            if USE_PRIORITIZED_BUFFER:
+                td_errors = td_errors.detach().cpu()
+                new_priorities = (
+                    torch.mean(torch.abs(td_errors), -1, keepdim=False)
+                    + PRIORITIZED_REPLAY_EPS
+                )
+                # new_priorities = np.abs(td_errors) + PRIORITIZED_REPLAY_EPS
+                self.buffer.update_priorities(idxes, new_priorities.tolist())
 
             return critic_loss
 
@@ -310,8 +337,6 @@ class DDPG(LightningModule):
             actor_loss = -torch.mean(critic_value)
 
             return actor_loss
-        else:
-            raise ValueError("The 'module' argument can only be 'critic' or 'actor'")
 
     def _update_target(
         self, target_net: LightningModule, source_net: LightningModule, tau: float
@@ -393,20 +418,15 @@ class DDPG(LightningModule):
     def configure_optimizers(self) -> List[Optimizer]:
         """Initialize Adam optimizer."""
         critic_optimizer = torch.optim.Adam(
-            self.critic.parameters(), lr=self.hparams.critic_lr
+            self.critic.parameters(),
+            lr=self.hparams.critic_lr,
+            weight_decay=1e-2,  # FIXME check il wd is ok to use
         )
         actor_optimizer = torch.optim.Adam(
             self.actor.parameters(), lr=self.hparams.actor_lr
         )
 
         return [actor_optimizer, critic_optimizer]
-
-    def test_step(
-        self,
-        batch: Tuple[Tensor, Tensor],
-        nb_batch,
-    ):
-        print("----------- TESTING ------------")
 
     def train_dataloader(self) -> DataLoader:
         """Get train loader."""
@@ -425,10 +445,46 @@ class DDPG(LightningModule):
         )
         return dataloader
 
-    def test_dataloader(self) -> DataLoader:
-        # return self.__dataloader()
-        pass
+    def _test_loop(self) -> None:
+        env = self.env
+        device = self.actor.device
 
-    def get_device(self, batch) -> str:
-        """Retrieve device currently being used by minibatch."""
-        return batch[0].device.index if self.on_gpu else "cpu"
+        rewards = []
+        for episode_n in range(TEST_EPISODES):
+
+            state = env.reset()
+            state = torch.from_numpy(state).clone().detach().to(device)
+
+            episode_reward = 0
+            done = 0
+            while not done:
+
+                if RENDER:
+                    env.render()
+
+                action_upper_bound = env.action_space.high[0]
+                action_lower_bound = env.action_space.low[0]
+
+                sampled_action = self.actor(state, action_upper_bound)
+                legal_action = np.clip(
+                    sampled_action.detach().cpu().numpy(),
+                    action_lower_bound,
+                    action_upper_bound,
+                )
+                legal_action = torch.tensor(legal_action).to(device)
+
+                new_state, reward, done, _ = env.step(
+                    legal_action.detach().cpu().numpy()
+                )
+                new_state = torch.from_numpy(new_state).to(device)
+                state = new_state
+
+                episode_reward += reward
+            rewards.append(episode_reward)
+
+            print(f"Episode {episode_n} reward: {episode_reward}")
+
+        print(f"Mean reward over {TEST_EPISODES} episodes: {np.mean(rewards)}")
+
+    def test(self) -> None:
+        self._test_loop()

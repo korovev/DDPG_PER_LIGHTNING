@@ -1,7 +1,8 @@
+from sys import maxsize
 from buffers import Buffer
 from agent_utils import OUActionNoise
-from buffer_utils import Experience
-from simple_config import OU_NOISE_STD, RENDER
+from buffer_utils import Experience, Experience_weight_idx
+from simple_config import OU_NOISE_STD, RENDER, USE_PRIORITIZED_BUFFER
 
 import gym
 import numpy as np
@@ -82,7 +83,20 @@ class Agent:
         new_state = torch.from_numpy(new_state).to(net.device)
 
         self.state = self.state.to(net.device)
-        exp = Experience(self.state, action, reward, done, new_state)
+
+        if USE_PRIORITIZED_BUFFER:
+            exp = Experience_weight_idx(
+                self.state,
+                action,
+                reward,
+                done,
+                new_state,
+                1 / self.buffer._maxsize,
+                -1,
+            )
+        else:
+            exp = Experience(self.state, action, reward, done, new_state)
+
         self.buffer.add(exp)
 
         self.state = new_state

@@ -1,5 +1,17 @@
 import operator
+
+# from recordtype import recordtype
+
 from collections import namedtuple
+
+
+# """ Recordtype for storing experience steps gathered in training """
+# Experience = recordtype("Experience", "state action reward done new_state")
+
+# Experience_weight_idx = recordtype(
+#     "Experience_weight_id", "state action reward done new_state weight idx"
+# )
+
 
 """ Named tuple for storing experience steps gathered in training """
 Experience = namedtuple(
