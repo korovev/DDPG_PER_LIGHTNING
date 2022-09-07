@@ -94,38 +94,34 @@ class DDPGCritic(LightningModule):
         self.act_st_l2 = nn.Linear(256, 256)
         self.out = nn.Linear(256, action_dim)
 
-        # self.l1 = nn.Linear(state_dim, 16)
-        # self.l2 = nn.Linear(16 + action_dim, 32)
-        # self.l3 = nn.Linear(32, action_dim)
-        # --------------------------------------------
-        # self.l1 = nn.Linear(state_dim + action_dim, 400)
-        # self.l2 = nn.Linear(400, 300)
-        # self.l3 = nn.Linear(300, action_dim)
-
     def forward(self, state: Tensor, action):
+
         state_x = F.relu(self.state_l1(state))
         state_out = F.relu(self.state_l2(state_x))
-
         action_out = F.relu(self.action_l1(action))
 
         cat = torch.cat([state_out, action_out], dim=-1)
 
         act_st = F.relu(self.act_st_l1(cat))
         act_st = F.relu(self.act_st_l2(act_st))
+
         out = self.out(act_st)
+
         return out
 
-        # x = F.relu(self.l1(state))
-        # x = torch.cat([x, action], -1)
-        # x = F.relu(self.l2(x))
-        # x = self.l3(x)
-        # return x
-        # state_action = torch.cat([state, action], -1)
-        # # print(f"state_action shape: {state_action.shape}")
-        # x = F.relu(self.l1(state_action))
-        # x = F.relu(self.l2(x))
-        # x = self.l3(x)
-        # return x
+
+# --------------------------------------------------------
+# x = F.relu(self.l1(state))
+# x = torch.cat([x, action], -1)
+# x = F.relu(self.l2(x))
+# x = self.l3(x)
+# return x
+# state_action = torch.cat([state, action], -1)
+# # print(f"state_action shape: {state_action.shape}")
+# x = F.relu(self.l1(state_action))
+# x = F.relu(self.l2(x))
+# x = self.l3(x)
+# return x
 
 
 class DDPG(LightningModule):
@@ -266,8 +262,8 @@ class DDPG(LightningModule):
 
                 if USE_PRIORITIZED_BUFFER:
                     idxes.append(exp.idx)
-
                     weights.append(exp.weight.float())
+
             if USE_PRIORITIZED_BUFFER:
                 """They do not use importance sampling weights, therefore
                 they set all importance sampling weights to 1"""
@@ -283,19 +279,44 @@ class DDPG(LightningModule):
                 next_state_batch_tensor, self.action_upper_bound
             )
 
-            reward_batch = torch.tensor(reward_batch, device=self.device).unsqueeze(
-                dim=1
-            )
-            y = reward_batch + self.hparams.gamma * self.target_critic(
-                next_state_batch_tensor, target_actions
-            ).squeeze(
-                dim=1  # FIXME was -1 originally
-            )
+            reward_batch = (
+                torch.tensor(reward_batch, device=self.device)
+                .unsqueeze(dim=-1)
+                .unsqueeze(dim=-1)
+            )  # FIXME double unsueeze was single
 
-            critic_value = self.critic(state_batch_tensor, action_batch_tensor).squeeze(
-                dim=1  # FIXME was -1 originally
-            )
+            target_critic_value = self.target_critic(
+                next_state_batch_tensor, target_actions
+            )  # FIXME .squeeze(dim=1)
+
+            y = reward_batch + self.hparams.gamma * target_critic_value
+
+            # print(
+            #     f"reward_batch shape: {reward_batch.shape}\n \
+            #     target_critic_value: {target_critic_value.shape}\n \
+            #     y: {y.shape}"
+            # )
+            # exit()
+
+            critic_value = self.critic(
+                state_batch_tensor, action_batch_tensor
+            )  # FIXME .squeeze(dim=-1)
+
+            # print(
+            #     f"state batch tensor: {state_batch_tensor.shape}\n \
+            #     action_batch_tensor: {action_batch_tensor.shape}\n \
+            #     critic value: {critic_value.shape}\n"
+            # )
+            # exit()
+
             td_errors = y - critic_value
+
+            # print(
+            #     f"y: {y.shape}\n \
+            #     critic value: {critic_value.shape}\n \
+            #     td_errors: {td_errors.shape}\n"
+            # )
+            # exit()
 
             # Create a zero tensor
             zero_tensor = torch.zeros(td_errors.shape, device=self.device)
@@ -307,12 +328,26 @@ class DDPG(LightningModule):
             else:
                 critic_loss = F.mse_loss(td_errors, zero_tensor)
 
+                # print(
+                #     f"critic value: {critic_value.shape}\n \
+                #     zero_tensor: {zero_tensor.shape}\n \
+                #     critic_loss: {critic_loss}"
+                # )
+                # exit()
+
             if USE_PRIORITIZED_BUFFER:
                 td_errors = td_errors.detach().cpu()
                 new_priorities = (
                     torch.mean(torch.abs(td_errors), -1, keepdim=False)
                     + PRIORITIZED_REPLAY_EPS
-                )
+                ).squeeze(-1)
+
+                # print(
+                #     f"new_priorities: {new_priorities.squeeze(-1)}\n \
+                #     new_priorities.tolist(): {new_priorities.squeeze(-1).tolist()}\n"
+                # )
+                # exit()
+
                 # new_priorities = np.abs(td_errors) + PRIORITIZED_REPLAY_EPS
                 self.buffer.update_priorities(idxes, new_priorities.tolist())
 
@@ -332,7 +367,16 @@ class DDPG(LightningModule):
             state_batch_tensor = self._tensorify_gpufy(state_batch)
 
             actions = self.actor(state_batch_tensor, self.action_upper_bound)
-            critic_value = self.critic(state_batch_tensor, actions).squeeze(dim=-1)
+            critic_value = self.critic(
+                state_batch_tensor, actions
+            )  # FIXME .squeeze(dim=-1)
+
+            # print(
+            #     f"\ncritic value: {critic_value.shape}\n \
+            #     actor_loss: {torch.mean(critic_value)}\n"
+            # )
+            # exit()
+
             actor_loss = -torch.mean(critic_value)
 
             return actor_loss

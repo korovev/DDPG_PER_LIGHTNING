@@ -6,7 +6,6 @@ from simple_config import (
     TRAIN,
     ENV,
 )
-import torch
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import Callback
@@ -54,8 +53,6 @@ class PeriodicCheckpoint(ModelCheckpoint):
 
 if __name__ == "__main__":
 
-    # torch.multiprocessing.set_start_method("spawn")
-
     ckpt_path = Path(
         "~/Documents/currently_active_works/advanced_topics_RL_Capobianco/source/project/DDPG_PER_LIGHTNING/ckpt"
     )
@@ -79,7 +76,7 @@ if __name__ == "__main__":
 
     else:
         model = checkpoint_model = DDPG.load_from_checkpoint(
-            "/home/korovev/Documents/currently_active_works/advanced_topics_RL_Capobianco/source/project/DDPG_PER_LIGHTNING/ckpt/LunarLanderContinuous-v2/09-06-2022_17:28:47/latest-600000.ckpt"
+            "/home/korovev/Documents/currently_active_works/advanced_topics_RL_Capobianco/source/project/DDPG_PER_LIGHTNING/ckpt/MountainCarContinuous-v0/09-07-2022_15:05:59/latest-90000.ckpt"
         )
 
         model.test()
