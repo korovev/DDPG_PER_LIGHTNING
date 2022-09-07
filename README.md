@@ -10,11 +10,8 @@ This consists of a complete reimplementation of [DDPG with PrioritizedExperience
 | ![Controller run](readme_images/run.gif)           |
 
 ## Usage
-This implementation is based on Python 3.8. 
-Some of the dependencies include:
-	- Pytorch
-	- Lightning
-To install all the requirements:
+This implementation is based on Python 3.8. To install all the requirements:
+
 ```bash
 $ pip install -r requirements.txt
 ```
@@ -24,55 +21,42 @@ $ pip install -r requirements.txt
 
 ## Hyperparameters
 <table>
-<tr><th>VAE </th><th>MDN-RNN</th><th>Controller</th></tr>
+<tr><th>PER_BUFFER</th><th>ACTOR </th><th>CRITIC</th></tr>
 <tr><td>
 
-|    **hyperparameter**   |     **value**     |
-|:-----------------------:|:-----------------:|
-| Num. rollouts           | 1000              |
-| Setting                 | easy              |
-| Num. levels             | 20                |
-| Image size              | (64, 64, 3)       |
-| Batch size              | 32                |
-| Optimizer               | Adam              |
-| Learning rate           | 0.001             |
-| Learning rate scheduler | ReduceLROnPlateau |
-| Latent size             | 64                |
-| Epochs                  | 153               |
+|    **hyperparameter**          |     **value**     |
+|:------------------------------:|:-----------------:|
+| WARM_POPULATE                  | 10000             |
+| ALPHA                          | 0.6               |
+| BETA                           | 0.1               |
+| PRIORITIZED_REPLAY_ALPHA size  | 0.6               |
+| PRIORITIZED_REPLAY_BETA0 size  | 0.4               |
+| PRIORITIZED_REPLAY_BETA_ITERS  | None              |
+| PRIORITIZED_REPLAY_EPS rate    | 1e-6              |
+| BATCH_SIZE                     | 64                |
+| Latent size                    | 64                |
+| EPISODES                       | 150               |
 
 </td><td>
 
 |    **hyperparameter**   |     **value**     |
 |:-----------------------:|:-----------------:|
-| Num. rollouts           | 1000              |
-| Setting                 | easy              |
-| Num. levels             | 20                |
-| Image size              | (64, 64, 3)       |
-| Batch size              | 32                |
-| Optimizer               | Adam              |
-| Learning rate           | 0.001             |
-| Learning rate scheduler | ReduceLROnPlateau |
-| Latent size             | 64                |
+| OU_NOISE_STD            | 0.8               |
+| OPTIMIZER               | Adam              |
+| LEARNING RATE           | 1e-4              |
+| GAMMA                   | 0.99              |
+| TAU                     | 5e-3              |
 | LSTM hidden units       | 256               |
-| Sequence length         | 32                |
-| Epochs                  | 147               |
 
 </td><td>
 
 |    **hyperparameter**   |     **value**     |
 |:-----------------------:|:-----------------:|
-| Image size              | (64, 64, 3)       |
-| Setting                 | easy              |
-| Num. levels             | 20                |
-| Evolution algorithm     | CMA-ES            |
-| Learning rate scheduler | ReduceLROnPlateau |
-| Latent size             | 64                |
+| OPTIMIZER               | Adam              |
+| LEARNING RATE           | 5e-4              |
+| GAMMA                   | 0.99              |
+| TAU                     | 5e-3              |
 | LSTM hidden units       | 256               |
-| Population size         | 64                |
-| Num. samples            | 16                |
-| Target return           | 20                |
-| Evaluation frequency    | 2                 |
-| Epochs                  | 300               |
 
 </td>
 
@@ -83,37 +67,16 @@ $ pip install -r requirements.txt
 ## Running
 The complete pipeline to train the 3 model components:
 
-### 1. Generate dataset
-First, we generate 1000 rollouts from a random policy:
+### 1. Train the agent
+In ```simple_config.py```, set ```ENV=[gym env you want to train on]```, set ```TRAIN=True``` and run:
 ```bash
-$ PYTHONPATH=. python3 src/generate_data.py --rollouts 1000
+$ python main.py
 ```
-We then split the data in train, validation, and test:
+### 1. Train the agent
+In ```main.py```, manually copy the path of one of the checkpoints in ```ckpt/``` in the variable ```model```, set ```TRAIN=False``` and ```RENDER=True``` in ```simple_config.py``` and run:
 ```bash
-$ PYTHONPATH=. python3 src/split_data.py
-```
-Finally, we reorganize the data in order to train the MDN-RNN:
-```bash
-$ PYTHONPATH=. python3 src/pl_data/new_dataset.py
-```
-
-### 2. Train Vision
-To train the Vision, set `config_name="vae"` in line 149 of the [run.py](src/run.py) script, then run the following:
-```bash
-$ PYTHONPATH=. python3 src/run.py
-```
-
-### 3. Train Memory
-To train the Memory, set `config_name="mdrnn"` in line 149 of the [run.py](src/run.py) script, then run the following:
-```bash
-$ PYTHONPATH=. python3 src/run.py
-```
-
-### 4. Train Controller
-To train the Controller, run the following:
-```bash
-$ PYTHONPATH=. python3 src/controller.py
+$ python main.py
 ```
 
 ## Credits
-We took inspiration from the implementations of [Corentin Tallec](https://github.com/ctallec/world-models) and [Sebastian Risi](https://github.com/sebastianrisi/ga-world-models).
+We took inspiration from the implementations of [TODO](https://github.com/korovev) and TODO.
