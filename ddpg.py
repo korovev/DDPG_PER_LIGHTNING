@@ -469,12 +469,12 @@ class DDPG(LightningModule):
             while not done:
 
                 if RENDER:
-                    # env.render()
+                    env.render()
 
-                    img = env.render(mode="rgb_array")
-                    plt.imshow(img)
-                    plt.savefig("playing/roll_" + str(self.test_step) + ".png")
-                    self.test_step += 1
+                    # img = env.render(mode="rgb_array")
+                    # plt.imshow(img)
+                    # plt.savefig("playing/roll_" + str(self.test_step) + ".png")
+                    # self.test_step += 1
 
                 action_upper_bound = env.action_space.high[0]
                 action_lower_bound = env.action_space.low[0]
