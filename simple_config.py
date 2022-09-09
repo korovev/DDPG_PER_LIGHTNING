@@ -6,7 +6,7 @@ For main.py                      #
 WARM_POPULATE = 10000
 TRAINER_MAX_EPOCHS = 300000
 VAL_CHECK_INTERVAL = 100
-TRAIN = True
+TRAIN = False
 
 """ 
 -----------------------------------
@@ -14,7 +14,7 @@ For agent.py                      #
 -----------------------------------
 """
 OU_NOISE_STD = 0.8
-RENDER = False
+RENDER = True
 
 """ 
 -----------------------------------
@@ -29,7 +29,7 @@ BETA = 0.1
 For ddpg.py                       #
 -----------------------------------
 """
-ENV = "Pendulum-v1"  # "MountainCarContinuous-v0"  # "LunarLanderContinuous-v2"  #
+ENV = "MountainCarContinuous-v0"  # "Pendulum-v1"  # "LunarLanderContinuous-v2"  #
 USE_PRIORITIZED_BUFFER = True
 BATCH_SIZE = 64
 ACTOR_LR = 1e-4

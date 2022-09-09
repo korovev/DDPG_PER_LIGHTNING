@@ -6,7 +6,8 @@ This consists of a complete reimplementation of [DDPG with PrioritizedExperience
 
 |    **Agent playing**   |
 |:-----------------------:|
-| ![Controller run](readme_images/run.gif)           |
+| ![Controller run](playing/mountaincar/gif/mount_car.gif)           |
+| ![Controller run](playing/pendulum/gif/pend.gif)                   |
 
 ## Usage
 This implementation is based on Python 3.8. To install all the requirements:

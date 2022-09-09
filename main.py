@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     else:
         model = DDPG.load_from_checkpoint(
-            "/home/korovev/Documents/currently_active_works/advanced_topics_RL_Capobianco/source/project/DDPG_PER_LIGHTNING/ckpt/MountainCarContinuous-v0/09-07-2022_15:05:59/latest-90000.ckpt"
+            "/home/korovev/Documents/currently_active_works/advanced_topics_RL_Capobianco/source/project/DDPG_PER_LIGHTNING/ckpt/MountainCarContinuous-v0/MountainCarContinous_PER_final/latest-65000.ckpt"
         )
 
         model.test()

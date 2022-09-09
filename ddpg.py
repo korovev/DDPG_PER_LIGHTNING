@@ -9,6 +9,9 @@ import gym
 import numpy as np
 import torch
 
+from matplotlib import pyplot as plt
+
+
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
 
@@ -196,6 +199,8 @@ class DDPG(LightningModule):
         else:
             self.buffer = Buffer()
 
+        self.test_step = 0
+
         # self.populate(self.hparams.warm_start_steps)
 
     def populate(self, steps: int = 1000) -> None:
@@ -291,32 +296,11 @@ class DDPG(LightningModule):
 
             y = reward_batch + self.hparams.gamma * target_critic_value
 
-            # print(
-            #     f"reward_batch shape: {reward_batch.shape}\n \
-            #     target_critic_value: {target_critic_value.shape}\n \
-            #     y: {y.shape}"
-            # )
-            # exit()
-
             critic_value = self.critic(
                 state_batch_tensor, action_batch_tensor
             )  # FIXME .squeeze(dim=-1)
 
-            # print(
-            #     f"state batch tensor: {state_batch_tensor.shape}\n \
-            #     action_batch_tensor: {action_batch_tensor.shape}\n \
-            #     critic value: {critic_value.shape}\n"
-            # )
-            # exit()
-
             td_errors = y - critic_value
-
-            # print(
-            #     f"y: {y.shape}\n \
-            #     critic value: {critic_value.shape}\n \
-            #     td_errors: {td_errors.shape}\n"
-            # )
-            # exit()
 
             # Create a zero tensor
             zero_tensor = torch.zeros(td_errors.shape, device=self.device)
@@ -328,24 +312,12 @@ class DDPG(LightningModule):
             else:
                 critic_loss = F.mse_loss(td_errors, zero_tensor)
 
-                # print(
-                #     f"critic value: {critic_value.shape}\n \
-                #     zero_tensor: {zero_tensor.shape}\n \
-                #     critic_loss: {critic_loss}"
-                # )
-                # exit()
-
             if USE_PRIORITIZED_BUFFER:
                 td_errors = td_errors.detach().cpu()
                 new_priorities = (
                     torch.mean(torch.abs(td_errors), -1, keepdim=False)
                     + PRIORITIZED_REPLAY_EPS
                 ).squeeze(-1)
-
-                # print(
-                #     f"new_priorities: {new_priorities.squeeze(-1)}\n \
-                #     new_priorities.tolist(): {new_priorities.squeeze(-1).tolist()}\n"
-                # )
                 # exit()
 
                 # new_priorities = np.abs(td_errors) + PRIORITIZED_REPLAY_EPS
@@ -370,12 +342,6 @@ class DDPG(LightningModule):
             critic_value = self.critic(
                 state_batch_tensor, actions
             )  # FIXME .squeeze(dim=-1)
-
-            # print(
-            #     f"\ncritic value: {critic_value.shape}\n \
-            #     actor_loss: {torch.mean(critic_value)}\n"
-            # )
-            # exit()
 
             actor_loss = -torch.mean(critic_value)
 
@@ -485,8 +451,6 @@ class DDPG(LightningModule):
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,
-            # num_workers=16,
-            # pin_memory=True,
         )
         return dataloader
 
@@ -505,7 +469,12 @@ class DDPG(LightningModule):
             while not done:
 
                 if RENDER:
-                    env.render()
+                    # env.render()
+
+                    img = env.render(mode="rgb_array")
+                    plt.imshow(img)
+                    plt.savefig("playing/roll_" + str(self.test_step) + ".png")
+                    self.test_step += 1
 
                 action_upper_bound = env.action_space.high[0]
                 action_lower_bound = env.action_space.low[0]
