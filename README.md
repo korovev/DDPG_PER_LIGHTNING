@@ -72,11 +72,10 @@ In ```simple_config.py```, set ```ENV=[gym env you want to train on]```, set ```
 ```bash
 $ python main.py
 ```
-### 1. Train the agent
+### 1. Test the agent
 In ```main.py```, manually copy the path of one of the checkpoints in ```ckpt/``` in the variable ```model```, set ```TRAIN=False``` and ```RENDER=True``` in ```simple_config.py``` and run:
 ```bash
 $ python main.py
 ```
 
 ## Credits
-We took inspiration from the implementations of [TODO](https://github.com/korovev) and TODO.
