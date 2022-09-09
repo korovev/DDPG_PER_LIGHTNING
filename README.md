@@ -2,7 +2,7 @@
 
 **Authors**: [Luca Iezzi](https://github.com/korovev) and [Giulia Ciabatti](https://github.com/Giulia1809).
 
-This consists of a complete reimplementation of [DDPG with PrioritizedExperience Replay](https://arxiv.org/abs/1511.05952), and its adaptation on Pendulum-v1 and MountainCarContinuous-v0, one of the environments from [OpenAI Gym](https://www.gymlibrary.dev/).
+This consists of a complete reimplementation of [DDPG with PrioritizedExperience Replay](https://arxiv.org/abs/1511.05952), and its adaptation on Pendulum-v1 and MountainCarContinuous-v0, from [OpenAI Gym](https://www.gymlibrary.dev/).
 
 |    **Agent playing**   |
 |:-----------------------:|
@@ -45,7 +45,6 @@ $ pip install -r requirements.txt
 | LEARNING RATE           | 1e-4              |
 | GAMMA                   | 0.99              |
 | TAU                     | 5e-3              |
-| LSTM hidden units       | 256               |
 
 </td><td>
 
@@ -55,7 +54,6 @@ $ pip install -r requirements.txt
 | LEARNING RATE           | 5e-4              |
 | GAMMA                   | 0.99              |
 | TAU                     | 5e-3              |
-| LSTM hidden units       | 256               |
 
 </td>
 
