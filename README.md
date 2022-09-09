@@ -61,6 +61,10 @@ $ pip install -r requirements.txt
 
 </tr> </table>
 
+##Results
+![plots](plots/MountainCar/mountaincar_PERvsNOPER_total-reward_smoothed.png)
+![plots](plots/Pendulum/pendulum_PERvsNOPER_total-reward_smoothed.png)
+
 
 ## Running
 The complete pipeline to train the 3 model components:
