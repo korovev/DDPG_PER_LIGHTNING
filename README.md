@@ -82,3 +82,4 @@ $ python main.py
 ```
 
 ## Credits
+Some of the implementations (e.g. SumTree and MinTree) have been taken by existing repos, but it's been impossible to track the original author :( . If you recognize your code there, don't hesitate to drop me an email and I will add your repo to the credits! 
