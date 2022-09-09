@@ -10,7 +10,7 @@ This consists of a complete reimplementation of [DDPG with PrioritizedExperience
 | ![Controller run](playing/pendulum/gif/pend.gif)                   |
 
 ## Usage
-This implementation is based on Python 3.8. To install all the requirements:
+This implementation is based on Python 3.8 and PyTorch Lightning. To install all the requirements:
 
 ```bash
 $ pip install -r requirements.txt
