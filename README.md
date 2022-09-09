@@ -1,5 +1,4 @@
 # Deep Deterministic Policy Gradient (DDPG) with Prioritized Experience Replay
-[![](https://shields.io/badge/-nn--template-emerald?style=flat&logo=github&labelColor=gray)](https://github.com/lucmos/nn-template)
 
 **Authors**: [Luca Iezzi](https://github.com/korovev) and [Giulia Ciabatti](https://github.com/Giulia1809).
 
